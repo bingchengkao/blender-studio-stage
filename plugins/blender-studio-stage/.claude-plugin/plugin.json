@@ -1,0 +1,10 @@
+{
+  "name": "blender-studio-stage",
+  "version": "0.6.0",
+  "description": "A Blender workshop for the studio plugin: pieces that need realistic light.",
+  "author": {
+    "name": "bingchengkao",
+    "email": "bingchengkao@gmail.com"
+  },
+  "keywords": ["blender", "3d", "render", "studio", "workshop"]
+}
