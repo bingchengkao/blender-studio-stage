@@ -3,8 +3,9 @@
 # A piece is a scene carrying a "studio" property: {"lang", "mode", "controls"}. Its look values
 # are plain scene custom properties named look_*: a number, a colour (float array, colour subtype),
 # a choice (int with items) or an on/off. Range, items and hint live in each property's UI data,
-# label / group / rank in studio["controls"]. Rank 1-3 is the lowest control mode that shows it;
-# rank 0 is the post set, shown in every mode. Nothing here is needed to render or check a piece.
+# label / group / rank in studio["controls"]. Rank 1-3 is the lowest control mode that lays it
+# open; in a lower one it folds under its group's More, and a look value not listed under Other's.
+# Rank 0 is the post set, open in every mode. Nothing here is needed to render or check a piece.
 #
 # Opening a piece strips the window to the camera view and this panel, and keeps it there: the view
 # cannot be orbited or clicked into, only zoomed. "Open full Blender" undoes all of it. Scripts run
@@ -62,6 +63,7 @@ STRINGS = {
         "left_min": " · about {m} min {s} s left", "left_s": " · about {s} s left",
         "slower": "The picture here is slower while exporting",
         "done": "Exported:", "open_folder": "Show in folder", "failed": "Export failed: {why}",
+        "more": "More ({n})", "other": "Other", "tip_more": "Controls kept folded away; click to open or fold them",
     },
     "zh-Hant": {
         "save": "存檔", "saved": "已存檔", "fit": "回到整張", "time": "時間",
@@ -91,12 +93,13 @@ STRINGS = {
         "left_min": "・約剩 {m} 分 {s} 秒", "left_s": "・約剩 {s} 秒",
         "slower": "導出時，這裡的畫面會變慢",
         "done": "導出好了：", "open_folder": "打開資料夾", "failed": "導出失敗：{why}",
+        "more": "更多（{n}）", "other": "其他", "tip_more": "平常收起來的旋鈕，點一下打開或摺起來",
     },
 }
 
 # studio: the layout is on · duration: the time slider's range · looks: cached list of saved
-# looks · fit: what the frame was last fitted to.
-_state = {"studio": False, "duration": None, "looks": None, "fit": None}
+# looks · fit: what the frame was last fitted to · more: groups whose More is open, till a file opens.
+_state = {"studio": False, "duration": None, "looks": None, "fit": None, "more": set()}
 
 
 # --- the piece ------------------------------------------------------------------------------
@@ -119,21 +122,36 @@ def text(scene, key, /, **kw):  # positional: a problem's own fields may be call
         table.update(STRINGS.get(studio.get("lang", "en"), {}))
         if "ui" in studio:  # a language not built in: the piece carries its own words
             table.update(studio["ui"].to_dict())
-    return table[key].format(**kw)
+    try:
+        return table[key].format(**kw)
+    except (KeyError, IndexError, ValueError):  # a piece's own words with other placeholders
+        return STRINGS["en"][key].format(**kw)
 
 
-def visible_groups(scene):
-    """[(group, [(key, label)], is_post)] in the order the controls were written, post last."""
+def control_groups(scene):
+    """[(group, shown, more, is_post)] in the order the controls were written, post last; shown
+    and more are [(key, label)], more what the control mode leaves out. Look values with no control
+    go under Other's more, so none is out of reach; one with no label goes by its hint."""
     studio = scene["studio"]
     mode = int(studio.get("mode", 1))
+    controls = studio.get("controls", {})
+
+    def label(key, c):
+        return (c.get("label") or _ui_data(scene, key).get("description")
+                or key.removeprefix("look_").replace("_", " "))
+
     groups = {}
-    for key, c in studio.get("controls", {}).items():
+    for key, c in controls.items():
         rank = int(c.get("rank", 1))
-        if key in scene and rank <= mode:
-            g = groups.setdefault(c.get("group", ""), ([], rank == 0))
-            g[0].append((key, c.get("label", key)))
-    ordered = [(name, keys, post) for name, (keys, post) in groups.items()]
-    return [g for g in ordered if not g[2]] + [g for g in ordered if g[2]]
+        if key in scene:
+            g = groups.setdefault(c.get("group", ""), ([], [], rank == 0))
+            g[0 if rank <= mode else 1].append((key, label(key, c)))
+    other = text(scene, "other")
+    for key in scene.keys():
+        if key.startswith("look_") and key not in controls:
+            groups.setdefault(other, ([], [], False))[1].append((key, label(key, {})))
+    ordered = [(name, shown, more, post) for name, (shown, more, post) in groups.items()]
+    return [g for g in ordered if not g[3]] + [g for g in ordered if g[3]]
 
 
 def redraw_all():
@@ -511,19 +529,13 @@ def start_export(scene):
     while any(f == name or f.startswith(name + ".") for f in taken):  # twice in a minute
         n += 1
         name = "%s-%d" % (base, n)
-    fmt = picked_format(scene)
-    _job.update(tmp=tmp, copy=copy, out=os.path.join(folder, name), fmt=fmt, result=None, why="",
-                export_args=["--format", fmt, "--size", _pick["size"], "--quality", _pick["quality"],
-                             "--out", os.path.join(folder, name), "--frame", str(scene.frame_current)])
-    render_export()
-    return None
-
-
-def render_export():
-    _job.update(state="exporting", started=time.time(), done=0, total=0)
-    _spawn(_job["copy"], "--python-exit-code", "1", "--python", os.path.join(HERE, "export.py"),
-           "--", *_job["export_args"])
+    out = os.path.join(folder, name)
+    _job.update(state="exporting", tmp=tmp, out=out, result=None, why="", started=time.time(), done=0, total=0)
+    _spawn(copy, "--python-exit-code", "1", "--python", os.path.join(HERE, "export.py"), "--",
+           "--format", picked_format(scene), "--size", _pick["size"], "--quality", _pick["quality"],
+           "--out", out, "--frame", str(scene.frame_current))
     _watch()
+    return None
 
 
 def cancel_export():
@@ -535,7 +547,10 @@ def cancel_export():
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
-    if _job["state"] == "exporting" and running and _job["total"] and not _job["result"]:
+    if proc is not None:
+        _job["reader"].join(timeout=2)
+        _read_lines()  # stopped at once, or crashed: it may have claimed its .part before the panel read so
+    if _job["state"] == "exporting" and _job["total"] and _job["done"] < _job["total"]:
         _remove_partial()  # a half-written film is worse than none
     _end_job("idle")
 
@@ -552,15 +567,13 @@ def _job_tick():
         return None
 
 
-def _job_step():
-    proc = _job.get("proc")
-    if proc is None:
-        return None
+def _read_lines():
+    """Takes in what export.py has printed so far."""
     while True:
         try:
             line = _job["lines"].get_nowait()
         except queue.Empty:
-            break
+            return
         _job["tail"] = (_job["tail"] + [line])[-20:]
         if line.startswith("PROGRESS ") and "/" in line:
             done, total = line[9:].split("/")
@@ -569,6 +582,13 @@ def _job_step():
             _job["result"] = line[5:].rsplit(" ", 1)[0]
         elif line.startswith("FAILED "):
             _job["why"] = line[7:]
+
+
+def _job_step():
+    proc = _job.get("proc")
+    if proc is None:
+        return None
+    _read_lines()
     redraw_all()
     if proc.poll() is None:
         return 0.5
@@ -639,6 +659,21 @@ class STUDIO_OT_fit(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class STUDIO_OT_more(bpy.types.Operator):
+    # A button, not a layout panel: a layout panel cannot sit inside the group's box. Open or
+    # closed is kept only till a file opens, so it marks nothing unsaved and leaves no undo step.
+    bl_idname = "studio.more"
+    bl_label = "More"
+    bl_options = {"INTERNAL"}
+    description = _tip("tip_more")
+    group: bpy.props.StringProperty()
+
+    def execute(self, context):
+        _state["more"] ^= {self.group}
+        redraw_all()
+        return {"FINISHED"}
+
+
 class STUDIO_OT_save(bpy.types.Operator):
     bl_idname = "studio.save"
     bl_label = "Save"
@@ -657,15 +692,18 @@ class STUDIO_OT_save_look(bpy.types.Operator):
     description = _tip("tip_save_look")
     name: bpy.props.StringProperty()
 
+    @staticmethod
+    def free_name(scene):
+        taken, n = set(saved_looks()[0]), 1
+        while text(scene, "version", n=n) in taken:
+            n += 1
+        return text(scene, "version", n=n)
+
     def invoke(self, context, event):
         if not looks_dir():
             self.report({"ERROR"}, text(context.scene, "need_save"))
             return {"CANCELLED"}
-        taken = set(saved_looks()[0])
-        n = 1
-        while text(context.scene, "version", n=n) in taken:
-            n += 1
-        self.name = text(context.scene, "version", n=n)
+        self.name = self.free_name(context.scene)
         return context.window_manager.invoke_props_dialog(
             self, title=text(context.scene, "save_look"), confirm_text=text(context.scene, "ok_save"))
 
@@ -673,8 +711,8 @@ class STUDIO_OT_save_look(bpy.types.Operator):
         self.layout.prop(self, "name", text=text(context.scene, "name"))
 
     def execute(self, context):
-        name = self.name.replace("/", "-").strip().lstrip(".")
-        write_look(context.scene, name or text(context.scene, "version", n=len(saved_looks()[0]) + 1))
+        name = re.sub(r'[\\/:*?"<>|]', "-", self.name).strip().lstrip(".")  # what no system allows in a file name
+        write_look(context.scene, name or self.free_name(context.scene))
         redraw_all()
         return {"FINISHED"}
 
@@ -834,6 +872,24 @@ def draw_export(layout, scene, t):
             box.label(text=t("failed", why=_job["why"]), icon="ERROR")
 
 
+def draw_controls(col, scene, keys):
+    for key, label in keys:
+        path = '["%s"]' % key
+        ui = _ui_data(scene, key)
+        items = ui.get("items")
+        if items or ui.get("subtype") in ("COLOR", "COLOR_GAMMA"):
+            # Name on the left, as Blender lays these out; a short choice shows every option as a
+            # button.
+            row = col.split(factor=0.4)
+            row.label(text=label)
+            if items and len(items) <= 3:
+                row.row(align=True).prop(scene, path, expand=True)
+            else:
+                row.prop(scene, path, text="")
+        else:
+            col.prop(scene, path, text=label, slider=True)
+
+
 class STUDIO_PT_panel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -860,32 +916,29 @@ class STUDIO_PT_panel(bpy.types.Panel):
             header, body = layout.panel("studio_time")
             header.label(text=t("time"))
             if body:
-                r = body.row(align=True)
+                r = body.box().row(align=True)
                 playing = context.screen.is_animation_playing
                 r.operator("screen.animation_play", text="", icon="PAUSE" if playing else "PLAY")
                 r.prop(context.window_manager, "studio_time", text="", slider=True)
                 r.label(text=t("of_seconds", total="%g" % round(_state["duration"] or 0, 1)))
 
-        for group, keys, post in visible_groups(scene):
+        for group, shown, more, post in control_groups(scene):
             header, body = layout.panel(_panel_id(group), default_closed=post)
             header.label(text=group)
             if body:
-                col = body.column()
-                for key, label in keys:
-                    path = '["%s"]' % key
-                    ui = _ui_data(scene, key)
-                    items = ui.get("items")
-                    if items or ui.get("subtype") in ("COLOR", "COLOR_GAMMA"):
-                        # Name on the left, as Blender lays these out; a short choice shows
-                        # every option as a button.
-                        row = col.split(factor=0.4)
-                        row.label(text=label)
-                        if items and len(items) <= 3:
-                            row.row(align=True).prop(scene, path, expand=True)
-                        else:
-                            row.prop(scene, path, text="")
-                    else:
-                        col.prop(scene, path, text=label, slider=True)
+                box = body.box()
+                if shown:  # an empty column still takes a row's height
+                    draw_controls(box.column(), scene, shown)
+                if more:
+                    is_open = group in _state["more"]
+                    row = box.row()
+                    row.alignment = "LEFT"
+                    row.operator("studio.more", text=t("more", n=len(more)), emboss=False,
+                                 icon="DISCLOSURE_TRI_DOWN" if is_open else "DISCLOSURE_TRI_RIGHT").group = group
+                    if is_open:
+                        row = box.row()
+                        row.separator(factor=1.5)
+                        draw_controls(row.column(), scene, more)
 
         header, body = layout.panel("studio_looks")
         header.label(text=t("looks"))
@@ -947,7 +1000,7 @@ def _after_load():
 
 @persistent
 def _on_load(_):
-    _state.update(studio=False, looks=None, fit=None)
+    _state.update(studio=False, looks=None, fit=None, more=set())
     if not bpy.app.background:
         bpy.app.timers.register(_after_load, first_interval=0.3)
 
@@ -957,8 +1010,8 @@ def _on_save(_):
     redraw_all()  # the save button changes
 
 
-classes = (STUDIO_OT_guard, STUDIO_OT_layout, STUDIO_OT_fit, STUDIO_OT_save, STUDIO_OT_save_look,
-           STUDIO_OT_load_look, STUDIO_OT_delete_look, STUDIO_OT_export_pick, STUDIO_OT_export,
+classes = (STUDIO_OT_guard, STUDIO_OT_layout, STUDIO_OT_fit, STUDIO_OT_more, STUDIO_OT_save,
+           STUDIO_OT_save_look, STUDIO_OT_load_look, STUDIO_OT_delete_look, STUDIO_OT_export_pick, STUDIO_OT_export,
            STUDIO_OT_export_cancel, STUDIO_OT_open_exports, STUDIO_PT_panel)
 
 
@@ -992,6 +1045,6 @@ def unregister():
     _keymaps.clear()
     if hasattr(bpy.types.WindowManager, "studio_time"):
         del bpy.types.WindowManager.studio_time
-    _state.update(studio=False, duration=None, looks=None, fit=None)
+    _state.update(studio=False, duration=None, looks=None, fit=None, more=set())
     for c in reversed(classes):
         bpy.utils.unregister_class(c)

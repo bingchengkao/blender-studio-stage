@@ -3,10 +3,12 @@
 A Claude Code plugin that makes Blender a workshop for the `studio` plugin: where a piece is built,
 tuned by the person it is for, and handed over from.
 
-**Which pieces**: those whose light must behave like real light — glass that bends what is behind
-it, liquid that glows through it, soft shadows from a window. Product ads for perfume, glass,
-jewellery. Web pages, front-ends, logos, 2D motion and stylised 3D belong to the web template. The
-cost is theirs: Blender on their machine, and Blender's window in front of them.
+**Which pieces**: those whose look comes from how light falls — glass that bends what is behind
+it, liquid that glows through it, soft shadows from a window; product ads for perfume, glass,
+jewellery. A stylised look can be one too, when it is drawn from the light, such as halftone dots
+that grow where the light falls. Web pages and front-ends belong to the web template; for other
+stylised work, weigh what the light adds against the cost. The cost is theirs: Blender on their
+machine, and Blender's window in front of them.
 
 ## The six roles
 
@@ -14,16 +16,16 @@ cost is theirs: Blender on their machine, and Blender's window in front of them.
 |---|---|---|
 | Frame | yes, built in | Blender renders frame N headless, the same every time (Cycles too: its seed is fixed by default). |
 | Look values | yes | Custom properties `look_…` on the scene, driving materials, lights and objects; readable with no add-on loaded. |
-| Panel | yes | The Studio panel in Blender lists the controls; drag one and the picture follows — about 0.2 s in EEVEE, 2–8 s to clear in Cycles. |
+| Panel | yes | The Studio panel in Blender lists the controls; drag one and the picture follows — on an M5 MacBook Pro, about 0.2 s in EEVEE, 2–8 s to clear in Cycles. |
 | Saved looks | yes | The same panel saves named sets of look values to `looks/` beside the .blend and brings them back. |
 | Master | yes | `export.py`, one command: MP4, ProRes, PNG sequence or a still, at draft, final or finer quality. The panel's Export runs the same. |
-| Defect check | yes, for Claude | `check.py`, one command, about a second: broken drivers, missing files, keyframed look values, post switched off, physics not baked (geometry-node simulations excepted) — what the picture cannot show. The panel does not run it. |
+| Defect check | yes, for Claude | `check.py`, one command, about a second: broken drivers, missing files, look values keyframed or driven, post switched off, physics not baked (geometry-node simulations and disk caches excepted) — what the picture cannot show. The panel does not run it. |
 
 What it cannot do:
 - Renders take time: on an M5 MacBook Pro a 5-second 1080p film took about 5 minutes in EEVEE and
   20–60 in Cycles.
 - Measured on one Mac only. Windows and Linux are untested.
-- Blender sets type poorly: type on a poster is laid out elsewhere.
+- Long or finely set type is laid out elsewhere; a title or a short line is set in the scene.
 - One Blender at a time can be changed live; renders of several can run side by side.
 - No shareable page of the panel: someone without Claude gets the `.blend` and tunes it in full
   Blender, without the Studio panel. What is delivered is the master.

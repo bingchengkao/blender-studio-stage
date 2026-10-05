@@ -7,12 +7,13 @@
 # RESULT the outcome. It leaves the piece as it was: the look value it moves is put back in any case,
 # nothing is saved, and a stand-in camera for the headless frame exists only in this process.
 # Verified on Blender 5.2.2 LTS (macOS), official MCP add-on 1.0.3, MCP server main@dbbf836.
-import datetime, importlib, json, os, queue, re, shutil, subprocess, sys, tempfile, threading, time, tomllib
-from math import isfinite, radians
+import datetime, importlib, json, os, queue, re, shutil, subprocess, sys, tempfile, threading, time
+from math import radians
 import bpy
 import numpy as np
 
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+HERE = os.path.dirname(os.path.abspath(__file__))
 PIECE = bpy.data.filepath
 TMP = tempfile.mkdtemp(prefix="selfcheck_")
 record = {"date": datetime.date.today().isoformat(), "blender": bpy.app.version_string}
@@ -48,18 +49,42 @@ def finish():
 
 # --- this Blender and its preferences --------------------------------------------------------
 
+def read_manifest(folder):
+    """The plain `key = "value"` lines of an add-on's manifest: all this needs, in any Python. The
+    first of a name wins: top-level keys come before any [table] in TOML."""
+    found = {}
+    with open(os.path.join(folder, "blender_manifest.toml"), encoding="utf-8") as fh:
+        for key, value in re.findall(r'^\s*(\w+)\s*=\s*["\']([^"\'\n]*)["\']', fh.read(), re.M):
+            found.setdefault(key, value)
+    return found
+
+
 def manifest(ext_id):
     """The manifest of an enabled extension add-on with this id, from whichever repository."""
     for key in bpy.context.preferences.addons.keys():
         if key.startswith("bl_ext.") and key.rsplit(".", 1)[-1] == ext_id:
             mod = sys.modules.get(key) or importlib.import_module(key)
-            with open(os.path.join(os.path.dirname(mod.__file__), "blender_manifest.toml"), "rb") as fh:
-                return tomllib.load(fh)
+            return read_manifest(os.path.dirname(mod.__file__))
     return None
+
+
+def version(text):
+    return tuple(int(n) for n in re.findall(r"\d+", text)[:3])
 
 
 def check_blender():
     global now
+    now = "this Blender"
+    shipped = read_manifest(os.path.join(HERE, "studio_stage"))  # the panel add-on this plugin carries
+    try:
+        with open(os.path.join(HERE, "..", "..", ".claude-plugin", "plugin.json"), encoding="utf-8") as fh:
+            record["plugin"] = json.load(fh)["version"]
+    except (OSError, ValueError, KeyError):
+        pass  # run from somewhere other than the plugin: nothing to record
+    new_enough = bpy.app.version >= version(shipped["blender_version_min"])
+    need(new_enough, "this Blender", "Blender %s" % bpy.app.version_string if new_enough else
+         "Blender %s is older than the add-ons need (%s or newer): setup.md says what to do."
+         % (bpy.app.version_string, shipped["blender_version_min"]))
     now = "add-ons"
     ok = True
     for ext_id, what in (("studio_stage", "the studio panel add-on"),
@@ -69,13 +94,17 @@ def check_blender():
             ok &= say(False, "add-on " + ext_id, what + " is not installed or not enabled in this Blender. Blender keeps "
                       "add-ons per version, so a new or second Blender gets them again (setup.md).")
             continue
-        record[ext_id] = m["version"]
+        record[ext_id] = m.get("version", "?")
         need_v = m.get("blender_version_min", "0")
-        if bpy.app.version < tuple(int(n) for n in re.findall(r"\d+", need_v)[:3]):
+        if bpy.app.version < version(need_v):
             ok &= say(False, "add-on " + ext_id, "%s %s needs Blender %s or newer; this one is %s."
-                      % (what, m["version"], need_v, bpy.app.version_string))
+                      % (what, record[ext_id], need_v, bpy.app.version_string))
+        elif ext_id == "studio_stage" and record[ext_id] != shipped.get("version"):
+            ok &= say(False, "add-on " + ext_id, "%s in this Blender is %s, but the plugin carries %s, so the "
+                      "panel's Export would run other code than yours: install the plugin's copy again (setup.md)."
+                      % (what, record[ext_id], shipped.get("version")))
         else:
-            say(True, "add-on " + ext_id, "%s, made for Blender %s and newer" % (m["version"], need_v))
+            say(True, "add-on " + ext_id, "%s, made for Blender %s and newer" % (record[ext_id], need_v))
     now = "online access"
     online = bpy.context.preferences.system.use_online_access
     ok &= say(online, "online access", "on" if online else

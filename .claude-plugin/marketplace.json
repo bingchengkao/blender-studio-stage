@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "blender-studio-stage",
-  "description": "A Blender workshop for the studio plugin: pieces that need realistic light.",
+  "description": "A Blender workshop for the studio plugin: pieces whose look comes from how light falls.",
   "owner": {
     "name": "bingchengkao",
     "email": "bingchengkao@gmail.com"
@@ -10,7 +10,7 @@
     {
       "name": "blender-studio-stage",
       "source": "./plugins/blender-studio-stage",
-      "description": "A Blender workshop for the studio plugin: pieces that need realistic light.",
+      "description": "A Blender workshop for the studio plugin: pieces whose look comes from how light falls.",
       "category": "productivity",
       "keywords": ["blender", "3d", "render", "studio", "workshop"]
     }

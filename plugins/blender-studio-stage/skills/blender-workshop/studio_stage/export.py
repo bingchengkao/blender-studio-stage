@@ -1,8 +1,8 @@
 # Master: render what gets handed over, from a copy saved out of their open Blender.
 #   blender -b --factory-startup -Y <copy.blend> --python-exit-code 1 --python export.py -- \
-#       --out <path, no extension> [--format mp4] [--size full] [--quality final] [--frame N]
+#       --out <path, no extension> [--format F] [--size full] [--quality final] [--frame N]
 # format:  mp4 (plays anywhere) · prores (for editing) · png-sequence · frame (one frame as PNG)
-#          · png / tiff / jpeg (a still piece, one frame long)
+#          · png / tiff / jpeg (a still piece, one frame long). Default: mp4, or png for a still piece.
 # size:    half · full · double, of the piece's own size
 # quality: draft (half again, an eighth of the samples: to see the motion) · final (the file's own
 #          settings, the ones tuned for delivery) · finer (twice the samples)
@@ -18,7 +18,7 @@ import bpy
 
 args = argparse.ArgumentParser(prog="export.py")
 args.add_argument("--out", required=True)
-args.add_argument("--format", default="mp4", choices=["mp4", "prores", "png-sequence", "frame", "png", "tiff", "jpeg"])
+args.add_argument("--format", choices=["mp4", "prores", "png-sequence", "frame", "png", "tiff", "jpeg"])
 args.add_argument("--size", default="full", choices=["half", "full", "double"])
 args.add_argument("--quality", default="final", choices=["draft", "final", "finer"])
 args.add_argument("--frame", type=int)
@@ -27,6 +27,7 @@ opt = args.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv el
 sc = bpy.context.scene
 r = sc.render
 ims = r.image_settings
+opt.format = opt.format or ("png" if sc.frame_end <= sc.frame_start else "mp4")
 VIDEO = opt.format in ("mp4", "prores")
 STILL = opt.format in ("frame", "png", "tiff", "jpeg")
 target = None  # what this run writes, the .part; removed again if it fails
@@ -49,6 +50,8 @@ if sc.camera is None:
 
 # --- where it goes ----------------------------------------------------------------------------
 
+frames = list(range(sc.frame_start, sc.frame_end + 1, sc.frame_step))
+total = 1 if STILL else len(frames)
 ext = {"mp4": ".mp4", "prores": ".mov", "jpeg": ".jpg", "tiff": ".tif"}.get(opt.format, ".png")
 path = opt.out if opt.format == "png-sequence" else opt.out + ext
 if os.path.exists(path):
@@ -67,6 +70,7 @@ except FileExistsError:
           "choose another --out." % part, flush=True)
     sys.exit(1)
 target = part
+print("PROGRESS 0/%d" % total, flush=True)  # at once: the panel then knows this .part is its own to clear
 r.use_file_extension, r.use_overwrite, r.use_placeholder = True, True, False
 if opt.format == "png-sequence":  # a folder of numbered frames, named for the folder they end up in
     r.filepath = os.path.join(part, os.path.basename(opt.out) + "_####")
@@ -142,8 +146,6 @@ else:
 
 # --- render -----------------------------------------------------------------------------------
 
-frames = list(range(sc.frame_start, sc.frame_end + 1, sc.frame_step))
-total = 1 if STILL else len(frames)
 done = []
 
 
@@ -153,7 +155,6 @@ def after_frame(*_):
 
 
 bpy.app.handlers.render_post.append(after_frame)
-print("PROGRESS 0/%d" % total, flush=True)
 t0 = time.perf_counter()
 try:
     if STILL:

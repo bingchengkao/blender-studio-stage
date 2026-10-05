@@ -3,7 +3,8 @@
 #   blender -b --factory-startup -Y <copy.blend> --python-exit-code 1 --python check.py
 # Run it on a copy saved from their open Blender, as delivery would see it: no add-ons, no scripts.
 # One PROBLEM line each, then RESULT; exit 1 when anything is found.
-# Not covered: geometry-node simulation zones left unbaked (5.2 offers no baked flag to read).
+# Not covered: geometry-node simulation zones left unbaked (5.2 offers no baked flag to read), and
+# physics baked to a disk cache beside the .blend, which a copy saved elsewhere renders frozen.
 # Verified on Blender 5.2.2 LTS.
 import os, sys
 import bpy
@@ -48,6 +49,8 @@ for idb in bpy.data.all_ids:
         seen.add(owner.session_uid)
         where = "%s %s%s" % (type(idb).__name__, idb.name, "" if owner is idb else " (its node tree)")
         for fc in ad.drivers:
+            if owner == sc and fc.data_path.startswith('["look_'):  # the add-on blocks Ctrl+D, not every way in
+                problem("Look value %s has a driver: its control no longer follows their drag." % fc.data_path[2:-2])
             d = fc.driver
             if d.type == "SCRIPTED" and not d.is_simple_expression:
                 problem("Driver on %s %s needs Python (`%s`): it stops in their Blender, which runs no scripts."
@@ -71,6 +74,8 @@ if sc.compositing_node_group is not None and not sc.render.use_compositing:
     problem("Compositing is off for renders: the master would come out without post.")
 
 for path in bpy.utils.blend_paths(absolute=True, packed=False, local=False):
+    if not path:  # physics on a disk cache in its default folder reports an empty path
+        continue
     probe = os.path.dirname(path) if ("#" in path or "<" in path) else path  # sequences and tiles: their folder
     if not os.path.exists(probe):
         problem("Missing file: %s" % path)

@@ -1,7 +1,7 @@
 # Setting up for Blender work
 
 Read this when a machine or a piece is being set up for the Blender workshop, or when the
-self-check says something is missing. Do only what is missing.
+self-check says something is missing or out of step. Do only what is needed.
 
 ## What the machine needs
 
@@ -56,15 +56,26 @@ commit, it starts in under a second and needs no network once fetched.
    `"enabledMcpjsonServers": ["blender"]` into `.claude/settings.local.json`. Claude Code takes
    this permission only from the folder the conversation opened in; without it the first
    conversation asks, with "continue without" chosen in advance.
-4. Run the self-check on the piece's .blend — at the start, its copy of `starter.blend` — with
-   `-- --open`, telling them a Blender window will appear. Its first run fetches the server.
-   If the newest server and the released add-on do not get along, pin the commit the add-on's
-   release was tagged from instead.
-5. The workshop's note survives plugin updates by naming things for what they are: it opens by
-   telling whoever works on the piece to load this plugin's skill, `blender-studio-stage:blender-workshop`,
-   before any Blender work, and it calls the plugin's folder its `installPath` in
-   `~/.claude/plugins/installed_plugins.json` — never a path, which changes with every update.
-6. A conversation has only the channel it started with, so the work goes on in a new one.
+4. Copy `starter.blend` into the workshop — each part's, with parts — named for the piece or part:
+   exports are named after the .blend.
+5. Run the self-check on that .blend with `-- --open`, telling them a Blender window will appear.
+   Its first run fetches the server. If the newest server and the released add-on do not get
+   along, pin the commit the add-on's release was tagged from instead.
+6. Start the workshop's note with this line: load this plugin's skill,
+   `blender-studio-stage:blender-workshop`, before any Blender work. In the note, call the plugin's
+   folder its `installPath` in `~/.claude/plugins/installed_plugins.json`, never a path: the path
+   changes with every update.
+7. A conversation has only the channel it started with, so the work goes on in a new one.
 
-The add-on inside Blender belongs to the machine, not the piece. When a new piece starts, offer
-to update it (`blender --online-mode -c extension update`); that changes it for pieces under way too.
+## Versions
+
+A piece and all its parts keep the versions they started with until delivery. Blender, its add-ons
+and this plugin belong to the machine, so updating them is offered only when a new piece starts,
+after asking whether another piece is still under way: it would change too. Blender's extension
+update refreshes its repositories' lists only when told to (`blender -c extension update --help`),
+and updates every extension that has a newer version.
+
+The one exception: when the `studio_stage` add-on in Blender is a different version from the one
+beside this file — the self-check says so — install this one again, even mid-piece, then have them
+save, close and reopen Blender: until then the open one runs the old panel. The panel's Export must
+run what you run.
