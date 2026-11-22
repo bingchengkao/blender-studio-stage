@@ -6,8 +6,8 @@ tuned by the person it is for, and handed over from.
 **Which pieces**: those whose look comes from how light falls — glass that bends what is behind
 it, liquid that glows through it, soft shadows from a window; product ads for perfume, glass,
 jewellery. A stylised look can be one too, when it is drawn from the light, such as halftone dots
-that grow where the light falls. Web pages and front-ends belong to the web template; for other
-stylised work, weigh what the light adds against the cost. The cost is theirs: Blender on their
+that grow where the light falls. For other stylised work, weigh what the light adds against the
+cost. The cost is theirs: Blender on their
 machine, and Blender's window in front of them.
 
 ## The six roles
